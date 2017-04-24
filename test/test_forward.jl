@@ -1,16 +1,19 @@
 using PyPlot, AcousticWave
-nz = 200; nx = 200; ext = 20; iflag = 1;
-dz = 15.; dx = 15.; dt = 1.5e-3; f0=10.0; tmax = 2.0;
+nz = 500; nx = 500; ext = 20; iflag = 1;
+dz = 15.; dx = 15.; dt = 1.e-3; f0=10.0; tmax = 10.0;
 v  = 2500. * ones(nz, nx);
+v[250:end,:]  = 3500.
 # initialize source term
-isz = [75, 125]; isx = [120, 120]; ot = [0.0, 0.0]; amp = [1.0, -1.0];
-src = InitMultiSources(isz, isx, nz, nx, ext, iflag, ot, dt, f0, amp);
+isz = 5; isx = 250; ot = 0.; amp = 1.0;
+src = InitSource(isz, isx, nz, nx, ext, iflag, ot, dt, f0, amp);
 # discretize spatial derivative operator
 vmax = maximum(v); vmin = minimum(v);
 fidMtx = InitFidMtx(nz, nx, ext, iflag, dz, dx, dt, vmax, vmin, v, f0);
-irz = collect(1:2:nx); irx = 50*ones(Int64, length(irz));
-@time shot = MultiStepForward(irz, irx, src, fidMtx, tmax=tmax)
+irx = collect(1:2:nx); irz = 5*ones(Int64, length(irx));
+@time shot = MultiStepForward(irz, irx, src, fidMtx, tmax=tmax);
 @time shot1 = MultiStepForward_test(irz, irx, src, fidMtx, tmax=tmax)
+
+
 function MultiStepForward_test(irz::Array{Int64,1}, irx::Array{Int64,1}, srcs::Array{Source,1}, fidMtx::FidMtx; tmax=1.0)
     nz = fidMtx.nz ; nx = fidMtx.nx; ext= fidMtx.ext; iflag = fidMtx.iflag; dt = fidMtx.dt;
     nt = round(Int64, tmax/dt)+1

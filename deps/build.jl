@@ -17,11 +17,11 @@ println("srcdir   = $srcdir")
 println("useIntel = $useIntelFortran")
 
 if !isdir(builddir)
-	println("creating build directory")
-	mkdir(builddir)
-	if !isdir(builddir)
-		error("Could not create build directory")
-	end
+	 println("creating build directory")
+	 mkdir(builddir)
+	 if !isdir(builddir)
+		  error("Could not create build directory")
+	 end
 end
 
 @static if is_unix()
@@ -31,22 +31,22 @@ end
 	outfile = joinpath(builddir,"spmatvec")
 	@build_steps begin
 		if useIntelFortran
-			run(`ifort -O3 -xHost -fPIC -fpp -openmp -integer-size 64 -diag-disable=7841 -shared  $src1 $src2 -o $outfile`)
+			 run(`ifort -O3 -xHost -fPIC -fpp -openmp -integer-size 64 -diag-disable=7841 -shared  $src1 $src2 -o $outfile`)
 		else
-			println("fortran version")
-			run(`gfortran --version`)
-			run(`gfortran -O3 -fPIC -cpp -fopenmp -fdefault-integer-8 -shared  $src1 $src2 -o $outfile`)
+			 println("fortran version")
+			 run(`gfortran --version`)
+			 run(`gfortran -O3 -fPIC -cpp -fopenmp -fdefault-integer-8 -shared  $src1 $src2 -o $outfile`)
 		end
 	end
 end
 
 @static if is_windows()
-	src1 = joinpath(srcdir,"A_mul_B.f90")
-	src2 = joinpath(srcdir,"Ac_mul_B.f90")
-	outfile = joinpath(builddir,"spmatvec.dll")
-	@build_steps begin
-		println("fortran version")
-		run(`gfortran --version`)
-		run(`gfortran -O3 -cpp -fopenmp -fdefault-integer-8 -shared -DBUILD_DLL  $src1 $src2 -o $outfile`)
-	end
+	  src1 = joinpath(srcdir,"A_mul_B.f90")
+	  src2 = joinpath(srcdir,"Ac_mul_B.f90")
+	  outfile = joinpath(builddir,"spmatvec.dll")
+	  @build_steps begin
+		  println("fortran version")
+		  run(`gfortran --version`)
+		  run(`gfortran -O3 -cpp -fopenmp -fdefault-integer-8 -shared -DBUILD_DLL  $src1 $src2 -o $outfile`)
+	  end
 end
