@@ -16,6 +16,29 @@ type FidMtx
      MpxBvx :: SparseMatrixCSC{Float64,Int64}
 end
 
+type gpuFdMtx
+     MvzBvz :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MvzBp  :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MvxBvx :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MvxBp  :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MpzBpz :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MpzBvz :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MpxBpx :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+     MpxBvx :: CUSPARSE.CudaSparseMatrixHYB{Float32}
+end
+
+function SendFidMtx2GPU(fm::FidMtx)
+ gm=gpuFdMtx(CUSPARSE.switch2hyb(CudaSparseMatrixCSR(spdiagm(convert(Vector{Float32}, fm.MvzBvz)))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(convert(SparseMatrixCSC{Float32,Int64}, fm.MvzBp))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(spdiagm(convert(Vector{Float32}, fm.MvxBvx)))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(convert(SparseMatrixCSC{Float32,Int64}, fm.MvxBp))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(spdiagm(convert(Vector{Float32}, fm.MpzBpz)))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(convert(SparseMatrixCSC{Float32,Int64}, fm.MpzBvz))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(spdiagm(convert(Vector{Float32}, fm.MpxBpx)))),
+             CUSPARSE.switch2hyb(CudaSparseMatrixCSR(convert(SparseMatrixCSC{Float32,Int64}, fm.MpxBvx))))
+    return gm
+end
+
 function DispStable!(vmax::Float64, vmin::Float64, f0::Float64, dz::Float64, dx::Float64, dt::Float64)
     h = vmin / 5 / (f0*2)
     d = minimum([dz, dx])
@@ -39,6 +62,9 @@ function InitFidMtx(nz::Int64, nx::Int64, ext::Int64, iflag::Int64, dz::Float64,
     fidMtx = FidMtx(nz, nx, ext, iflag, dz, dx, dt, MvzBvz, MvzBp, MvxBvx, MvxBp, MpzBpz, MpzBvz, MpxBpx, MpxBvx)
     return fidMtx
 end
+
+
+
 
 function vp2lambda(vp::Array{Float64,2}, rho::Array{Float64,2})
     (m , n ) = size(vp)

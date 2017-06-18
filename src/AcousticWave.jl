@@ -1,5 +1,5 @@
 module AcousticWave
-    using Requires
+    using Requires, CUDArt, CUSPARSE, CUBLAS
     const spmatveclib = abspath(joinpath(splitdir(Base.source_path())[1],"..","deps","builds","spmatvec"))
     include("dataStructure/dataStructure.jl")
     include("frequencyWave/frequencyWave.jl")

@@ -28,6 +28,27 @@ function OneStepForward!(spt2::SnapShot, spt1::SnapShot, fidMtx::FidMtx)
     return nothing
 end
 
+function OneStepForwardGPU!(spt2::gpuSpt, spt1::gpuSpt, GM::gpuFdMtx,
+                            tmp::CUDArt.CudaArray{Float32,1})
+    n = length(spt1.px);
+    spt2.it = spt1.it + 1;
+    CUSPARSE.mv!('N', 1.f0, GM.MvzBvz, spt1.vz, 0.0f0, spt2.vz, 'O');
+    CUBLAS.blascopy!(n, spt1.px, 1, tmp, 1);
+    CUBLAS.axpy!(n, 1.f0, spt1.pz, 1, tmp, 1);
+    CUSPARSE.mv!('N', 1.f0, GM.MvzBp, tmp, 1.0f0, spt2.vz, 'O');
+
+    CUSPARSE.mv!('N', 1.f0, GM.MvxBvx, spt1.vx, 0.0f0, spt2.vx, 'O');
+    CUSPARSE.mv!('N', 1.f0, GM.MvxBp, tmp, 1.0f0, spt2.vx, 'O');
+
+    CUSPARSE.mv!('N', 1.f0, GM.MpzBpz, spt1.pz, 0.0f0, spt2.pz, 'O');
+    CUSPARSE.mv!('N', 1.f0, GM.MpzBvz, spt2.vz, 1.0f0, spt2.pz, 'O');
+
+    CUSPARSE.mv!('N', 1.f0, GM.MpxBpx, spt1.px, 0.0f0, spt2.px, 'O');
+    CUSPARSE.mv!('N', 1.f0, GM.MpxBvx, spt2.vx, 1.0f0, spt2.px, 'O');
+
+    return nothing
+end
+
 function OneStepForward!(spt2::SnapShot, spt1::SnapShot, fidMtx::FidMtx, tmp::Array{Float64,1}, tmp1::Array{Float64,1})
     spt2.it  = spt1.it + 1
     sup1!(spt2.vz, fidMtx.MvzBvz, spt1.vz)
@@ -79,6 +100,41 @@ function MultiStepForward(irz::Array{Int64,1}, irx::Array{Int64,1}, wsc::WSrcCub
 end
 
 # output shot or shot3, inject single source
+# function MultiStepForward(irz::Array{Int64,1}, irx::Array{Int64,1}, src::Source, fidMtx::FidMtx; tmax=1.0, otype="p")
+#     nz = fidMtx.nz ; nx = fidMtx.nx; ext= fidMtx.ext; iflag = fidMtx.iflag; dt = fidMtx.dt;
+#     nt = round(Int64, tmax/dt)+1
+#     isz= src.isz; isx= src.isx;
+#     if otype == "p"
+#        shot = InitShot(isz, isx, nz, nx, ext, iflag, irz, irx, 0.0, dt, nt)
+#     elseif otype == "vp"
+#        shot = InitShot3(isz, isx, nz, nx, ext, iflag, irz, irx, 0.0, dt, nt)
+#     end
+#     tl = src.ot; tu = tl + (src.nt-1)*dt;
+#     spt1 = InitSnapShot(nz, nx, ext, iflag, dt, 1)
+#     spt2 = InitSnapShot(nz, nx, ext, iflag, dt, 2)
+#     AddSource!(spt1, src)
+#     tmp = zeros(length(spt1.vz))
+#     tmp1= zeros(tmp);
+#     if otype == "p"
+#        spt2shot!(shot, spt1)
+#     elseif otype == "vp"
+#        spt2shot3!(shot, spt1)
+#     end
+#     for it = 2: nt
+#         OneStepForward!(spt2, spt1, fidMtx, tmp, tmp1)
+#         if tl <= (it-1)*dt <= tu
+#            AddSource!(spt2, src)
+#         end
+#         copySnapShot!(spt1, spt2)
+#         if otype == "p"
+#            spt2shot!(shot, spt1)
+#         elseif otype == "vp"
+#            spt2shot3!(shot, spt1)
+#         end
+#     end
+#     return shot
+# end
+
 function MultiStepForward(irz::Array{Int64,1}, irx::Array{Int64,1}, src::Source, fidMtx::FidMtx; tmax=1.0, otype="p")
     nz = fidMtx.nz ; nx = fidMtx.nx; ext= fidMtx.ext; iflag = fidMtx.iflag; dt = fidMtx.dt;
     nt = round(Int64, tmax/dt)+1
@@ -92,15 +148,13 @@ function MultiStepForward(irz::Array{Int64,1}, irx::Array{Int64,1}, src::Source,
     spt1 = InitSnapShot(nz, nx, ext, iflag, dt, 1)
     spt2 = InitSnapShot(nz, nx, ext, iflag, dt, 2)
     AddSource!(spt1, src)
-    tmp = zeros(length(spt1.vz))
-    tmp1= zeros(tmp);
     if otype == "p"
        spt2shot!(shot, spt1)
     elseif otype == "vp"
        spt2shot3!(shot, spt1)
     end
     for it = 2: nt
-        OneStepForward!(spt2, spt1, fidMtx, tmp, tmp1)
+        OneStepForward!(spt2, spt1, fidMtx)
         if tl <= (it-1)*dt <= tu
            AddSource!(spt2, src)
         end
@@ -111,7 +165,39 @@ function MultiStepForward(irz::Array{Int64,1}, irx::Array{Int64,1}, src::Source,
            spt2shot3!(shot, spt1)
         end
     end
-    return shot
+    return shot, spt1
+end
+
+
+function MultiStepForwardGPU(irz::Vector{Int64}, irx::Vector{Int64}, src::Source, gm::gpuFdMtx; tmax=1.0)
+    nt = floor(Int64, tmax/src.dt) + 1
+    nz = src.nz; nx = src.nx; ext = src.ext;
+    iflag = src.iflag; dt = src.dt;
+    if iflag == 1
+       Nz = nz + 2*ext
+       zupper = ext
+    else src.iflag == 2
+       Nz = nz +   ext
+       zupper = 0
+    end
+    Nx = nx + 2*ext
+    N  = Nz * Nx
+    s1 = InitGpuSpt(nz, nx, ext, iflag, dt, 1)
+    s2 = InitGpuSpt(nz, nx, ext, iflag, dt, 2)
+    p  = convert(Vector{Float32}, src.p)
+    idx = (src.isx+ext-1)*Nz + src.isz + zupper
+    scatterSrc!(s1, p, N, idx)
+    tmp = CudaArray(zeros(Float32, N))
+    for i = 2 : length(p)
+        OneStepForwardGPU!(s2, s1, gm, tmp)
+        scatterSrc!(s2, p, N, idx)
+        copySptGPU!(s1, s2)
+    end
+    for i = length(p)+1 : nt
+        OneStepForwardGPU!(s2, s1, gm, tmp)
+        copySptGPU!(s1, s2)
+    end
+    return s1
 end
 
 # output shot or shot3, inject multi-sources

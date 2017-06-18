@@ -11,6 +11,45 @@ type SnapShot
      px :: Array{Float64,1}
 end
 
+type gpuSpt
+     nz :: Int64
+     nx :: Int64
+     ext:: Int64
+     iflag :: Int64
+     dt :: Float64
+     it :: Int64
+     vz :: CUDArt.CudaArray{Float32,1}
+     vx :: CUDArt.CudaArray{Float32,1}
+     pz :: CUDArt.CudaArray{Float32,1}
+     px :: CUDArt.CudaArray{Float32,1}
+end
+
+function InitGpuSpt(nz::Int64, nx::Int64, ext::Int64,
+                iflag::Int64, dt::Float64, it::Int64)
+    if iflag == 1
+       Nz = nz + 2*ext
+    elseif iflag == 2
+       Nz = nz +   ext
+    end
+    Nx = nx + 2*ext
+    n = Nz * Nx
+    return gpuSpt(nz, nx, ext, iflag, dt, it,
+        CudaArray(zeros(Float32, n)),
+        CudaArray(zeros(Float32, n)),
+        CudaArray(zeros(Float32, n)),
+        CudaArray(zeros(Float32, n)))
+end
+
+function SendSpt2GPU(spt::SnapShot)
+    gs = gpuSpt(spt.nz, spt.nx, spt.ext, spt.iflag,
+                spt.dt, spt.it,
+                CudaArray(convert(Vector{Float32}, spt.vz)),
+                CudaArray(convert(Vector{Float32}, spt.vx)),
+                CudaArray(convert(Vector{Float32}, spt.pz)),
+                CudaArray(convert(Vector{Float32}, spt.px)))
+    return gs
+end
+
 type Wfd
      nz :: Int64
      nx :: Int64
@@ -256,6 +295,15 @@ function InfoStress(path::String ; print_flag = false)
        println("dt: $dt, nt: $nt")
     end
     return nz, nx, ext, iflag, dt, nt
+end
+
+function copySptGPU!(gs1::gpuSpt, gs2::gpuSpt)
+    gs1.it = gs2.it
+    tmp = gs1.vz; gs1.vz = gs2.vz; gs2.vz = tmp;
+    tmp = gs1.vx; gs1.vx = gs2.vx; gs2.vx = tmp;
+    tmp = gs1.pz; gs1.pz = gs2.pz; gs2.pz = tmp;
+    tmp = gs1.px; gs1.px = gs2.px; gs2.px = tmp;
+    return nothing
 end
 
 function copySnapShot!(snapShot1::SnapShot, snapShot2::SnapShot)

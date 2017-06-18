@@ -62,6 +62,14 @@ function InitMultiSources(isz::Array{Int64,1}, isx::Array{Int64,1}, nz::Int64, n
     return srcs
 end
 
+function scatterSrc!(gs::gpuSpt, p::Vector{Float32}, N::Int64, idx::Int64)
+    it = gs.it
+    s = sparsevec([idx], p[it], N)
+    ds= CudaSparseVector(s)
+    CUSPARSE.sctr!(ds, gs.pz, 'O')
+    return nothing
+end
+
 function AddSource!(spt::SnapShot, src::Source)
     dt = spt.dt
     nz = spt.nz ; nx    = spt.nx   ;
